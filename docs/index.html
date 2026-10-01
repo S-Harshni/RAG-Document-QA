@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RAG Document QA</title>
-<meta name="description" content="Retrieval-augmented question answering: BM25, dense and hybrid retrieval evaluated on 10,570 questions.">
+<meta name="description" content="Retrieval-augmented question answering: chunking, a FAISS vector store, hybrid retrieval, open-source language models, prompt-injection tests and an agent, all measured.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -19,11 +19,11 @@
       <a class="ghost" href="https://github.com/S-Harshni/RAG-Document-QA">Source on GitHub</a>
     </div>
   </header>
-  <form class="ask" id="ask"><input id="q" aria-label="Question" placeholder="Ask a question about the documents" autocomplete="off"><button type="submit">Ask</button></form>
-  <div class="chips" id="chips"></div>
+  <nav class="tabs" id="tabs" aria-label="Sections"></nav>
   <main id="main"></main>
   <footer class="foot" id="foot"></footer>
 </div>
+<script src="charts.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

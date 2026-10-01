@@ -7,8 +7,10 @@ import hashlib
 import json
 import pickle
 import sys
+import time
 from pathlib import Path
 
+import httpx
 import numpy as np
 
 ROOT = Path(__file__).parent
@@ -20,7 +22,7 @@ from ragqa.llm import LLM  # noqa: E402
 MODELS = ["llama3.2:3b", "qwen2.5:3b", "gemma2:2b"]
 MAIN_MODEL = "qwen2.5:3b"
 TOP_K, BUDGET_TOKENS, SEED = 3, 1200, 7
-N_ANSWERABLE, N_UNANSWERABLE, N_INJECTION, N_SAMPLING, N_AGENT = 150, 75, 60, 40, 60
+N_ANSWERABLE, N_UNANSWERABLE, N_INJECTION, N_SAMPLING, N_AGENT = 150, 75, 36, 20, 30
 CACHE = ROOT / "results" / "llm_cache.jsonl"
 
 
@@ -35,12 +37,23 @@ class Cached:
                 self.store[row["key"]] = row["output"]
         self.llms: dict[str, LLM] = {}
         self.calls = 0
+        self.errors = 0
 
     def chat(self, model: str, messages: list[dict], **kw) -> str:
         key = hashlib.sha256(json.dumps([model, messages, kw], sort_keys=True).encode()).hexdigest()
         if key not in self.store:
             self.llms.setdefault(model, LLM(model))
-            self.store[key] = self.llms[model].chat(messages, **kw)
+            for _ in range(3):                # a local model server can fail while it swaps models
+                try:
+                    self.store[key] = self.llms[model].chat(messages, **kw)
+                    break
+                except httpx.HTTPError:
+                    time.sleep(5)
+            else:
+                # The server rejects some generations outright (malformed JSON under JSON mode).
+                # That counts as an invalid answer, the same as any other unparseable output.
+                self.store[key] = "<server error>"
+                self.errors += 1
             self.calls += 1
             with CACHE.open("a") as f:
                 f.write(json.dumps({"key": key, "output": safety.redact(self.store[key])}) + "\n")
@@ -182,7 +195,7 @@ def main() -> None:
         "models": models, "styles": styles, "injection": injection, "detector": detector, "sampling": sampling, "agent": agent_result,
     }
     (ROOT / "results" / "llm.json").write_text(json.dumps(out, indent=1))
-    print("new calls:", llm.calls)
+    print("new calls:", llm.calls, "server errors:", llm.errors)
 
 
 if __name__ == "__main__":

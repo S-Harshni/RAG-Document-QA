@@ -2,70 +2,92 @@
 
 ![tests](https://github.com/S-Harshni/RAG-Document-QA/actions/workflows/ci.yml/badge.svg)
 ![python](https://img.shields.io/badge/python-3.12-blue)
+![faiss](https://img.shields.io/badge/vector_store-FAISS-0467df)
+![llm](https://img.shields.io/badge/LLM-Llama_·_Qwen_·_Gemma-6b46c1)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-Retrieval-augmented question answering: find the passages that answer a question, then answer from them with citations. Three retrievers are measured on 10,570 questions, so the choice between keywords, embeddings and a hybrid is made on evidence.
+A retrieval-augmented question-answering pipeline in which every stage is measured: chunking, embeddings in a FAISS vector store, hybrid retrieval, three open-source language models, prompt-injection tests and a tool-using agent.
 
 **Live demo:** https://s-harshni.github.io/RAG-Document-QA/
 
 ![Demo](docs/img/demo.png)
 
-## How it works
+## Pipeline
 
 ```
-question ──► BM25 (keywords) ────┐
-         └─► dense (embeddings) ─┴─► reciprocal rank fusion ──► top 5 passages ──► answer with citations
-                                                                                  (LLM API, or quoted sentence)
+documents ──► sentence-aware chunks (overlap) ──► embeddings ──► FAISS vector store ─┐
+                                              └─► BM25 inverted index ───────────────┤
+question ────────────────────────────────────────────────────────────────────────────┴─► rank fusion ──► top chunks
+        ──► token budget ──► prompt (rules, examples, tagged chunks) ──► LLM ──► validated JSON: answer + citations, or a refusal
 ```
 
-- **BM25** is implemented from scratch over an inverted index ([`retrieval.py`](src/ragqa/retrieval.py)).
-- **Dense** retrieval uses `all-MiniLM-L6-v2` sentence embeddings and cosine similarity.
-- **Hybrid** merges the two rankings with reciprocal rank fusion.
-- **Generation** ([`generation.py`](src/ragqa/generation.py)) sends the numbered passages to a language model through any OpenAI-compatible API. The prompt tells the model to answer only from the passages, cite them like `[2]`, and reply "I cannot answer that from the documents" otherwise. Citations to passages that were not supplied are dropped.
-- **Without an API key** the system quotes the sentence that best matches the question, so it still runs end to end. The live demo works this way, with BM25 running in the browser.
+| Stage | What it does | Code |
+| --- | --- | --- |
+| Chunking | Packs whole sentences into chunks of a target size with 20% overlap | [`chunking.py`](src/ragqa/chunking.py) |
+| Retrieval | BM25 written from scratch, MiniLM embeddings in a FAISS index (flat or HNSW), reciprocal rank fusion | [`retrieval.py`](src/ragqa/retrieval.py) |
+| Prompting | Zero-shot, few-shot and chain-of-thought prompts; a context-window token budget; JSON output that must cite a chunk or decline | [`prompts.py`](src/ragqa/prompts.py) |
+| Models | Any OpenAI-compatible API; by default Llama 3.2, Qwen 2.5 and Gemma 2 run locally through Ollama | [`llm.py`](src/ragqa/llm.py) |
+| Safety | Six prompt-injection attacks, an injection detector, redaction of keys and personal data before logging | [`safety.py`](src/ragqa/safety.py) |
+| Agent | The model may search again with its own query before answering (tool use with a step limit) | [`agent.py`](src/ragqa/agent.py) |
 
 ## Results
 
-The corpus is the SQuAD v1.1 dev set: 2,067 passages from 48 Wikipedia articles and 10,570 questions, each with one correct passage. Reproduce with `python run.py`.
+The corpus is the SQuAD v1.1 dev set, re-chunked: 48 Wikipedia articles (253,780 words) and 10,570 questions with known answer spans. A retriever is right when a chunk containing the answer span is in its top results.
 
-| Retriever | Correct passage ranked 1st | In top 5 | In top 10 | MRR |
+### Retrieval (120-word chunks, 2,691 chunks, all 10,570 questions)
+
+| Retriever | Right chunk ranked 1st | In top 5 | In top 10 | MRR |
 | --- | ---: | ---: | ---: | ---: |
-| BM25 (keywords) | **77.0%** | 92.2% | 95.1% | **0.839** |
-| Dense (MiniLM embeddings) | 62.3% | 86.5% | 91.7% | 0.729 |
-| Hybrid (rank fusion) | 73.1% | **93.4%** | **96.8%** | 0.821 |
+| BM25 (keywords) | 73.0% | 90.1% | 93.4% | 0.807 |
+| Dense (MiniLM embeddings, FAISS) | 55.0% | 81.5% | 88.4% | 0.668 |
+| **Hybrid (rank fusion)** | 68.6% | 91.0% | 95.3% | 0.785 |
 
-- **Hybrid is best where it matters for RAG:** the model reads the top 5 passages, and the correct one is among them for 93.4% of questions.
-- **Keywords beat embeddings on this data.** SQuAD questions were written by people looking at the passage, so they reuse its words. Questions from real users paraphrase more, which favours embeddings; that is the reason to keep both.
-- **Extractive mode:** the quoted sentence contains a reference answer for 65.0% of questions.
-- **Not measured:** the quality of LLM-written answers. That needs a paid API key; the request, prompt and citation parsing are covered by tests with a mocked API.
+Hybrid retrieval is the best at the depth a language model actually reads (top 5 and top 10). Keywords alone are strong at rank 1 here because SQuAD questions were written by people looking at the text and reuse its words; real users paraphrase more, which is why both are kept.
 
-![Evaluation](docs/img/evaluation.png)
+### Chunk size
+
+| Chunk size (words) | Chunks | BM25, top 5 | Dense, top 5 | Hybrid, top 5 | Words sent to the model (top 5) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 60 | 5,520 | 86.0% | 80.3% | 88.3% | 236 |
+| 120 | 2,691 | 90.1% | 81.5% | 91.0% | 524 |
+| 240 | 1,330 | 92.8% | 80.0% | 91.6% | 1,117 |
+| 480 | 671 | 95.1% | 68.0% | 85.5% | 2,285 |
+
+Larger chunks help keyword search and hurt embeddings, which blur when one chunk covers several topics; they also multiply the prompt cost. 120 words is the default: close to the best hybrid recall at a quarter of the context of the largest setting.
+
+![Retrieval evaluation](docs/img/evaluation.png)
+
+### Vector store
+
+FAISS index of 2,691 vectors (384 dimensions), saved and reloaded from disk. The approximate HNSW index returns 99.9% of the exact top-10 results at 0.20 ms per query (exact search: 0.22 ms). At this size exact search is already fast; the test shows the approximate index gives up almost nothing.
 
 ## Run it
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python run.py                                          # evaluates all three retrievers (about two minutes on CPU)
-python run.py --ask "Who led the Normans at Hastings?" # one question
-pytest -q                                              # 8 tests
-python -m http.server -d docs 8000                     # demo at http://localhost:8000
+python run.py                       # retrieval, chunk sizes, vector store -> results/retrieval.json (a few minutes on CPU)
+
+ollama pull llama3.2:3b qwen2.5:3b gemma2:2b
+python eval_llm.py                  # language models, injection, sampling, agent -> results/llm.json (cached; resumable)
+python build_demo.py                # docs/data.json for the demo page
+pytest -q                           # 18 tests, no model or network needed
+python -m http.server -d docs 8000  # demo at http://localhost:8000
 ```
 
-To answer with a language model:
+Set `LLM_BASE_URL` and `LLM_API_KEY` to use a hosted OpenAI-compatible provider instead of Ollama.
 
-```bash
-export LLM_API_KEY=...           # any OpenAI-compatible provider
-export LLM_BASE_URL=...          # optional, defaults to Nebius AI Studio
-export LLM_MODEL=...             # optional
-```
+## Tests
+
+18 tests, run in CI: chunk boundaries and overlap, BM25 against hand-computed scores, rank fusion, the vector store round trip, token budgeting, parsing and validation of model output, every injection attack against the detector, redaction, and the agent loop with a scripted model.
 
 ## Limitations
 
-- Passages are SQuAD paragraphs, which are already a good size. Real documents need a chunking step, and chunk size changes the results.
-- One small embedding model; a larger one or a re-ranker would likely do better.
-- The questions share words with their passages, which flatters keyword search.
-- Extractive answers are whole sentences, not short spans.
+- SQuAD questions reuse the wording of the text, which flatters keyword search; results on paraphrased questions would differ.
+- One small embedding model and no re-ranker.
+- The language models are 2 to 3 billion parameters, quantised, on a laptop; larger models would answer more accurately. The language-model tests use samples of a few dozen to 150 questions, so differences of a few points are not meaningful.
+- Answer correctness is a string match against reference answers; it does not judge fluency.
+- The live demo runs keyword retrieval in the browser; the vector store and the language models run in the Python pipeline.
 
 ## Data
 
