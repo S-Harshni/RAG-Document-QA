@@ -7,3 +7,6 @@ data/raw/
 *.duckdb
 *.duckdb.wal
 data/lakehouse/
+out/
+results/llm_cache.jsonl
+*.log

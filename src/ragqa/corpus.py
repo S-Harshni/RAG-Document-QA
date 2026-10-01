@@ -1,4 +1,10 @@
-"""Passages and questions from SQuAD v1.1 (dev): 48 Wikipedia articles, one passage per paragraph."""
+"""Documents and questions from SQuAD v1.1 (dev).
+
+Each of the 48 Wikipedia articles is rebuilt as one long document, so chunking is a real decision
+here: the published paragraph boundaries are thrown away and `chunking.py` chooses its own.
+Every question keeps the character span of its answer inside the document, which is what lets
+retrieval be scored for any chunking.
+"""
 import json
 import re
 from dataclasses import dataclass
@@ -13,7 +19,7 @@ STOPWORDS = frozenset(
 
 
 @dataclass(frozen=True)
-class Passage:
+class Document:
     id: int
     title: str
     text: str
@@ -22,21 +28,27 @@ class Passage:
 @dataclass(frozen=True)
 class Question:
     text: str
-    passage_id: int
+    doc_id: int
+    start: int                 # character offset of the first reference answer in the document
+    end: int
     answers: tuple[str, ...]
 
 
-def load(path: Path = SQUAD) -> tuple[list[Passage], list[Question]]:
-    passages, questions = [], []
+def load(path: Path = SQUAD) -> tuple[list[Document], list[Question]]:
+    documents, questions = [], []
     for article in json.loads(path.read_text())["data"]:
-        title = article["title"].replace("_", " ")
+        doc_id, parts, offset = len(documents), [], 0
         for paragraph in article["paragraphs"]:
-            pid = len(passages)
-            passages.append(Passage(pid, title, paragraph["context"]))
+            context = paragraph["context"]
             for qa in paragraph["qas"]:
+                first = qa["answers"][0]
+                start = offset + first["answer_start"]
                 answers = tuple(dict.fromkeys(a["text"] for a in qa["answers"]))
-                questions.append(Question(qa["question"].strip(), pid, answers))
-    return passages, questions
+                questions.append(Question(qa["question"].strip(), doc_id, start, start + len(first["text"]), answers))
+            parts.append(context)
+            offset += len(context) + 1      # paragraphs are joined with one newline
+        documents.append(Document(doc_id, article["title"].replace("_", " "), "\n".join(parts)))
+    return documents, questions
 
 
 def tokenize(text: str) -> list[str]:

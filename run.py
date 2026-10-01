@@ -1,10 +1,11 @@
-"""Evaluate the retrievers on every SQuAD dev question and export what the demo page needs.
+"""Retrieval experiments: chunk size, retriever, and exact against approximate vector search.
 
-    python run.py            # writes docs/data.json (about two minutes on a laptop CPU)
-    python run.py --ask "Who led the Normans at Hastings?"
+    python run.py        # writes out/ (index, chunks) and results/retrieval.json; a few minutes on a laptop CPU
 """
 import json
+import pickle
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -12,51 +13,81 @@ import numpy as np
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from ragqa import corpus, generation, retrieval  # noqa: E402
+from ragqa import chunking, corpus, retrieval  # noqa: E402
 
-TOP_K = 5
+SIZES = [60, 120, 240, 480]     # words per chunk
+OVERLAP = 0.2
+DEFAULT_SIZE = 120
+CANDIDATES = 50                 # each retriever hands this many to the fusion step
+OUT, RESULTS = ROOT / "out", ROOT / "results"
 
 
-def positions(rankings: np.ndarray, gold: np.ndarray) -> np.ndarray:
-    return np.argmax(rankings == gold[:, None], axis=1)
+def evaluate(chunks, questions, q_vectors, embed) -> tuple[dict, dict]:
+    by_doc = chunking.index_by_document(chunks)
+    gold = [chunking.gold_chunks(q, chunks, by_doc) for q in questions]
+    bm25 = retrieval.BM25(chunks)
+    vectors = embed([f"{c.title}. {c.text}" for c in chunks])
+    store = retrieval.VectorStore(vectors, "flat")
+    dense = store.search(q_vectors, CANDIDATES)
+    ranks = {"BM25 (keywords)": [], "Dense (vector store)": [], "Hybrid (rank fusion)": []}
+    context_words = []
+    for i, q in enumerate(questions):
+        keyword = bm25.search(q.text, CANDIDATES)
+        hybrid = retrieval.reciprocal_rank_fusion([keyword, dense[i]])
+        ranks["BM25 (keywords)"].append(retrieval.first_hit(keyword, gold[i]))
+        ranks["Dense (vector store)"].append(retrieval.first_hit(dense[i], gold[i]))
+        ranks["Hybrid (rank fusion)"].append(retrieval.first_hit(hybrid, gold[i]))
+        context_words.append(sum(chunks[int(c)].words for c in hybrid[:5]))
+    table = {name: retrieval.recall_and_mrr(np.array(r)) for name, r in ranks.items()}
+    info = {
+        "chunks": len(chunks), "mean_words": round(float(np.mean([c.words for c in chunks])), 1),
+        "answer_inside_one_chunk": round(float(np.mean([bool(g) for g in gold])), 6),
+        "top5_context_words": round(float(np.mean(context_words))),
+    }
+    return {"retrievers": table, **info}, {"bm25": bm25, "vectors": vectors, "gold": gold}
 
 
 def main() -> None:
-    passages, questions = corpus.load()
-    bm25, dense = retrieval.BM25(passages), retrieval.Dense(passages)
-    if "--ask" in sys.argv:
-        q = sys.argv[sys.argv.index("--ask") + 1]
-        top = [passages[i] for i in retrieval.reciprocal_rank_fusion([bm25.rank(q), dense.rank(q)])[:TOP_K]]
-        print(json.dumps(generation.answer(q, top), indent=1))
-        return
-    gold = np.array([q.passage_id for q in questions])
-    texts = [q.text for q in questions]
-    r_bm25 = np.stack([bm25.rank(t) for t in texts])
-    r_dense = dense.rank_many(texts)
-    r_hybrid = np.stack([retrieval.reciprocal_rank_fusion([a, b]) for a, b in zip(r_bm25, r_dense, strict=True)])
-    rankings = {"BM25 (keywords)": r_bm25, "Dense (MiniLM embeddings)": r_dense, "Hybrid (rank fusion)": r_hybrid}
-    table = [{"retriever": name, **retrieval.recall_and_mrr(positions(r, gold))} for name, r in rankings.items()]
+    OUT.mkdir(exist_ok=True)
+    RESULTS.mkdir(exist_ok=True)
+    documents, questions = corpus.load()
+    embed = retrieval.Embedder()
+    q_vectors = embed([q.text for q in questions])
+    by_size, keep = {}, None
+    for size in SIZES:
+        chunks = chunking.chunk_corpus(documents, size, int(size * OVERLAP))
+        by_size[size], extra = evaluate(chunks, questions, q_vectors, embed)
+        print(size, json.dumps(by_size[size]["retrievers"]["Hybrid (rank fusion)"]), by_size[size]["chunks"], flush=True)
+        if size == DEFAULT_SIZE:
+            keep = (chunks, extra)
 
-    # Extractive fallback: is a reference answer inside the sentence it quotes from the top passages?
-    hits = 0
-    for q, ranking in zip(questions, r_hybrid, strict=True):
-        sentence, _ = generation.best_sentence(q.text, [passages[i] for i in ranking[:TOP_K]])
-        hits += any(a.lower() in sentence.lower() for a in q.answers)
-    pos = positions(r_hybrid, gold)
-    examples = []
-    for i in np.random.default_rng(42).choice(len(questions), 12, replace=False):
-        q = questions[int(i)]
-        examples.append({"question": q.text, "answer": q.answers[0], "rank": int(pos[i]) + 1})
-    out = {
-        "dataset": {"name": "SQuAD v1.1 (dev)", "articles": len({p.title for p in passages}), "passages": len(passages),
-                    "questions": len(questions), "licence": "CC BY-SA 4.0"},
-        "embedding_model": retrieval.EMBEDDING_MODEL, "top_k": TOP_K, "retrievers": table,
-        "extractive": {"questions": len(questions), "answer_in_quoted_sentence": round(hits / len(questions), 6)},
-        "examples": examples,
-        "passages": [{"t": p.title, "x": p.text} for p in passages],
+    chunks, extra = keep
+    flat, hnsw = retrieval.VectorStore(extra["vectors"], "flat"), retrieval.VectorStore(extra["vectors"], "hnsw")
+    timing = {}
+    for name, store in (("flat", flat), ("hnsw", hnsw)):
+        t0 = time.perf_counter()
+        found = np.vstack([store.search(v, 10) for v in q_vectors[:2000]])
+        timing[name] = {"ms_per_query": round(1000 * (time.perf_counter() - t0) / 2000, 4), "found": found}
+    agreement = np.mean([len(set(a) & set(b)) / 10 for a, b in zip(timing["flat"]["found"], timing["hnsw"]["found"], strict=True)])
+    stores = {
+        "vectors": len(chunks), "dimensions": int(extra["vectors"].shape[1]),
+        "flat_ms_per_query": timing["flat"]["ms_per_query"], "hnsw_ms_per_query": timing["hnsw"]["ms_per_query"],
+        "hnsw_recall_of_exact_top10": round(float(agreement), 6),
     }
-    (ROOT / "docs" / "data.json").write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
-    print(json.dumps({k: out[k] for k in ("dataset", "retrievers", "extractive")}, indent=1))
+    flat.save(OUT / "chunks.faiss")
+    (OUT / "chunks.pkl").write_bytes(pickle.dumps(chunks))
+    reloaded = retrieval.VectorStore.load(OUT / "chunks.faiss")
+    assert (reloaded.search(q_vectors[:5], 5) == flat.search(q_vectors[:5], 5)).all()
+
+    result = {
+        "dataset": {"name": "SQuAD v1.1 (dev)", "documents": len(documents), "questions": len(questions),
+                    "words": sum(len(d.text.split()) for d in documents), "licence": "CC BY-SA 4.0"},
+        "embedding_model": retrieval.EMBEDDING_MODEL, "overlap": OVERLAP, "default_size": DEFAULT_SIZE,
+        "chunk_sizes": [{"size": s, **v} for s, v in by_size.items()], "vector_store": stores,
+    }
+    (RESULTS / "retrieval.json").write_text(json.dumps(result, indent=1))
+    print(json.dumps({"vector_store": stores, "sizes": {s: (v["chunks"], v["answer_inside_one_chunk"], v["top5_context_words"],
+          v["retrievers"]["Hybrid (rank fusion)"]["recall_at_5"]) for s, v in by_size.items()}}, indent=1))
 
 
 if __name__ == "__main__":

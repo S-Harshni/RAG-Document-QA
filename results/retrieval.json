@@ -1,0 +1,141 @@
+{
+ "dataset": {
+  "name": "SQuAD v1.1 (dev)",
+  "documents": 48,
+  "questions": 10570,
+  "words": 253780,
+  "licence": "CC BY-SA 4.0"
+ },
+ "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+ "overlap": 0.2,
+ "default_size": 120,
+ "chunk_sizes": [
+  {
+   "size": 60,
+   "retrievers": {
+    "BM25 (keywords)": {
+     "recall_at_1": 0.678146,
+     "recall_at_3": 0.821476,
+     "recall_at_5": 0.860454,
+     "recall_at_10": 0.898865,
+     "mrr": 0.760279
+    },
+    "Dense (vector store)": {
+     "recall_at_1": 0.552129,
+     "recall_at_3": 0.740208,
+     "recall_at_5": 0.803122,
+     "recall_at_10": 0.866982,
+     "mrr": 0.664023
+    },
+    "Hybrid (rank fusion)": {
+     "recall_at_1": 0.658846,
+     "recall_at_3": 0.834059,
+     "recall_at_5": 0.883349,
+     "recall_at_10": 0.928288,
+     "mrr": 0.758868
+    }
+   },
+   "chunks": 5520,
+   "mean_words": 47.2,
+   "answer_inside_one_chunk": 0.998297,
+   "top5_context_words": 236
+  },
+  {
+   "size": 120,
+   "retrievers": {
+    "BM25 (keywords)": {
+     "recall_at_1": 0.729991,
+     "recall_at_3": 0.868307,
+     "recall_at_5": 0.901041,
+     "recall_at_10": 0.934059,
+     "mrr": 0.807264
+    },
+    "Dense (vector store)": {
+     "recall_at_1": 0.549858,
+     "recall_at_3": 0.747682,
+     "recall_at_5": 0.814664,
+     "recall_at_10": 0.884295,
+     "mrr": 0.667856
+    },
+    "Hybrid (rank fusion)": {
+     "recall_at_1": 0.685525,
+     "recall_at_3": 0.862535,
+     "recall_at_5": 0.909555,
+     "recall_at_10": 0.952507,
+     "mrr": 0.78464
+    }
+   },
+   "chunks": 2691,
+   "mean_words": 104.1,
+   "answer_inside_one_chunk": 0.999527,
+   "top5_context_words": 524
+  },
+  {
+   "size": 240,
+   "retrievers": {
+    "BM25 (keywords)": {
+     "recall_at_1": 0.765847,
+     "recall_at_3": 0.896216,
+     "recall_at_5": 0.928288,
+     "recall_at_10": 0.958467,
+     "mrr": 0.838099
+    },
+    "Dense (vector store)": {
+     "recall_at_1": 0.518638,
+     "recall_at_3": 0.728098,
+     "recall_at_5": 0.799622,
+     "recall_at_10": 0.875307,
+     "mrr": 0.643849
+    },
+    "Hybrid (rank fusion)": {
+     "recall_at_1": 0.680227,
+     "recall_at_3": 0.863671,
+     "recall_at_5": 0.915799,
+     "recall_at_10": 0.962725,
+     "mrr": 0.783108
+    }
+   },
+   "chunks": 1330,
+   "mean_words": 222.2,
+   "answer_inside_one_chunk": 0.999905,
+   "top5_context_words": 1117
+  },
+  {
+   "size": 480,
+   "retrievers": {
+    "BM25 (keywords)": {
+     "recall_at_1": 0.786377,
+     "recall_at_3": 0.919962,
+     "recall_at_5": 0.951088,
+     "recall_at_10": 0.974645,
+     "mrr": 0.857779
+    },
+    "Dense (vector store)": {
+     "recall_at_1": 0.410312,
+     "recall_at_3": 0.593851,
+     "recall_at_5": 0.679849,
+     "recall_at_10": 0.790161,
+     "mrr": 0.53351
+    },
+    "Hybrid (rank fusion)": {
+     "recall_at_1": 0.580416,
+     "recall_at_3": 0.779186,
+     "recall_at_5": 0.854872,
+     "recall_at_10": 0.937086,
+     "mrr": 0.701221
+    }
+   },
+   "chunks": 671,
+   "mean_words": 452.8,
+   "answer_inside_one_chunk": 1.0,
+   "top5_context_words": 2285
+  }
+ ],
+ "vector_store": {
+  "vectors": 2691,
+  "dimensions": 384,
+  "flat_ms_per_query": 0.2181,
+  "hnsw_ms_per_query": 0.195,
+  "hnsw_recall_of_exact_top10": 0.99875
+ }
+}
