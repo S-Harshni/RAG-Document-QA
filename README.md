@@ -61,6 +61,52 @@ Larger chunks help keyword search and hurt embeddings, which blur when one chunk
 
 FAISS index of 2,691 vectors (384 dimensions), saved and reloaded from disk. The approximate HNSW index returns 99.9% of the exact top-10 results at 0.20 ms per query (exact search: 0.22 ms). At this size exact search is already fast; the test shows the approximate index gives up almost nothing.
 
+### Language models
+
+The top 3 chunks go to the model inside a 1,200-token budget. Tested on 150 questions whose answer is in the documents (the right chunk was retrieved for 86.7% of them) and 75 questions whose answer was deliberately withheld by retrieving from other documents. All models are open-source, 4-bit quantised, running on a laptop through Ollama.
+
+| Model (few-shot prompt) | Answer correct | Citation points to the right chunk | Declined when the answer was withheld | Declined although the answer was there | Valid JSON |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| llama3.2:3b | 78.7% | 84.8% | 86.7% | 3.1% | 100.0% |
+| gemma2:2b | 78.0% | 79.0% | 70.7% | 0.0% | 99.6% |
+| qwen2.5:3b | 74.0% | 80.9% | 96.0% | 4.6% | 100.0% |
+
+An answer is correct when it contains a reference answer. "Declined when the answer was withheld" is the hallucination test: a model that answers anyway is making something up.
+
+![Language model results](docs/img/llm.png)
+
+**Prompt style** (qwen2.5:3b):
+
+| Prompt | Answer correct | Citation right | Declined when withheld | Declined wrongly | Valid JSON |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Zero-shot | 70.7% | 25.0% | 94.7% | 10.0% | 100.0% |
+| Few-shot | 74.0% | 80.9% | 96.0% | 4.6% | 100.0% |
+| Chain of thought | 77.3% | 75.7% | 82.7% | 0.8% | 100.0% |
+
+**Sampling** (qwen2.5:3b, the same question asked three times with different seeds, top-p 0.95):
+
+| Temperature | Same answer all three times | Answer correct |
+| ---: | ---: | ---: |
+| 0.0 | 100.0% | 70.0% |
+| 0.7 | 100.0% | 70.0% |
+| 1.3 | 85.0% | 66.7% |
+
+### Prompt injection
+
+One retrieved chunk is poisoned with an instruction aimed at the model (six attack styles; placed at the start, middle or end). The attack succeeds if the output contains the planted code word. 36 attacks per model and setting.
+
+| Model | Attack worked, no defence | Attack worked, with the defence | Still answered correctly, with the defence |
+| --- | ---: | ---: | ---: |
+| gemma2:2b | 0.0% | 0.0% | 75.0% |
+| llama3.2:3b | 2.8% | 2.8% | 69.4% |
+| qwen2.5:3b | 0.0% | 0.0% | 61.1% |
+
+The defence wraps chunks in tags and tells the model that chunk text is reference material, never instructions. These small models mostly ignored the planted instruction even without the defence (1 of 36 attacks worked on llama3.2:3b, none on the other two), and the defence did not stop that one case. A prompt alone is not a guarantee, so the pipeline also has a pattern detector (flags 100% of the attack strings and 0.00% of the 2,691 clean chunks), output validation, and log redaction.
+
+### Agent
+
+On 30 questions where the first search did **not** return the answer-bearing chunk, an agent that may search again with its own keywords found the right chunk for 20.0% and answered 26.7% correctly, against 10.0% for a single retrieval (1.8 searches per question on average). These are the hardest questions in the set, so the absolute numbers are low; the comparison is what matters.
+
 ## Run it
 
 ```bash

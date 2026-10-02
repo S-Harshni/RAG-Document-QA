@@ -118,6 +118,7 @@ const TABS = {
       grid(
         card({
           title: 'Three open-source models, same prompt', wide: true, sub: 'Few-shot prompt. An answer is correct when it contains one of the reference answers.',
+          legend: [{ name: 'Answer correct', color: C.actual }, { name: 'Declined when the answer was withheld', color: C.model }],
           table: { columns: [{ label: 'Model', key: 'model' }, ...cols], rows: L.models, best: r => r === best },
         }, p => hbars(p, { rows: L.models.map(m => ({ label: m.model, values: [m.answer_accuracy, m.correctly_declined] })), series: [{ name: 'Answer correct', color: C.actual }, { name: 'Declined when it should', color: C.model }], format: F.pct, max: 1 })),
         card({
@@ -152,7 +153,7 @@ const TABS = {
           sub: 'The defence wraps each chunk in tags and tells the model that chunk text is reference material, never instructions.',
           legend: [{ name: 'No defence', color: C.model }, { name: 'With the defence', color: C.actual }],
           table: { columns: [{ label: 'Model', key: 'model' }, pctCol('Attack worked, no defence', 'open'), pctCol('Attack worked, with defence', 'defended'), pctCol('Still answered correctly, no defence', 'acc_open'), pctCol('Still answered correctly, with defence', 'acc_defended')], rows },
-          notes: ['The defence lowers the success rate; it does not make it zero. That is why the pipeline also checks chunks with a detector, validates the output format and redacts keys, emails and phone numbers before anything is logged.'],
+          notes: ['In this test the models mostly ignored the planted instruction with or without the defence, and the defence did not remove the one success. A prompt alone is not a guarantee, which is why the pipeline also checks chunks with a detector, validates the output format and redacts keys, emails and phone numbers before anything is logged.'],
         }, p => hbars(p, { rows: rows.map(r => ({ label: r.model, values: [r.open, r.defended] })), series: [{ name: 'No defence', color: C.model }, { name: 'With the defence', color: C.actual }], format: F.pct, max: Math.max(worst, 0.2) })),
         card({
           title: 'Layers of protection', wide: true,

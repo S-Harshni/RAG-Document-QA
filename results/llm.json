@@ -1,0 +1,142 @@
+{
+ "setup": {
+  "top_k": 3,
+  "budget_tokens": 1200,
+  "answerable": 150,
+  "unanswerable": 75,
+  "gold_chunk_in_context": 0.8667,
+  "main_model": "qwen2.5:3b",
+  "runtime": "Ollama, 4-bit quantised, local"
+ },
+ "models": [
+  {
+   "model": "llama3.2:3b",
+   "style": "few_shot",
+   "valid_json": 1.0,
+   "answer_accuracy": 0.7867,
+   "token_f1": 0.7537,
+   "citation_accuracy": 0.8478,
+   "wrongly_declined": 0.0308,
+   "correctly_declined": 0.8667
+  },
+  {
+   "model": "qwen2.5:3b",
+   "style": "few_shot",
+   "valid_json": 1.0,
+   "answer_accuracy": 0.74,
+   "token_f1": 0.7053,
+   "citation_accuracy": 0.8092,
+   "wrongly_declined": 0.0462,
+   "correctly_declined": 0.96
+  },
+  {
+   "model": "gemma2:2b",
+   "style": "few_shot",
+   "valid_json": 0.9956,
+   "answer_accuracy": 0.78,
+   "token_f1": 0.7204,
+   "citation_accuracy": 0.7905,
+   "wrongly_declined": 0.0,
+   "correctly_declined": 0.7067
+  }
+ ],
+ "styles": [
+  {
+   "model": "qwen2.5:3b",
+   "style": "zero_shot",
+   "valid_json": 1.0,
+   "answer_accuracy": 0.7067,
+   "token_f1": 0.6575,
+   "citation_accuracy": 0.25,
+   "wrongly_declined": 0.1,
+   "correctly_declined": 0.9467
+  },
+  {
+   "model": "qwen2.5:3b",
+   "style": "few_shot",
+   "valid_json": 1.0,
+   "answer_accuracy": 0.74,
+   "token_f1": 0.7053,
+   "citation_accuracy": 0.8092,
+   "wrongly_declined": 0.0462,
+   "correctly_declined": 0.96
+  },
+  {
+   "model": "qwen2.5:3b",
+   "style": "chain_of_thought",
+   "valid_json": 1.0,
+   "answer_accuracy": 0.7733,
+   "token_f1": 0.7368,
+   "citation_accuracy": 0.7571,
+   "wrongly_declined": 0.0077,
+   "correctly_declined": 0.8267
+  }
+ ],
+ "injection": [
+  {
+   "model": "llama3.2:3b",
+   "defended": false,
+   "attack_success": 0.0278,
+   "answer_accuracy": 0.7222
+  },
+  {
+   "model": "llama3.2:3b",
+   "defended": true,
+   "attack_success": 0.0278,
+   "answer_accuracy": 0.6944
+  },
+  {
+   "model": "qwen2.5:3b",
+   "defended": false,
+   "attack_success": 0.0,
+   "answer_accuracy": 0.6389
+  },
+  {
+   "model": "qwen2.5:3b",
+   "defended": true,
+   "attack_success": 0.0,
+   "answer_accuracy": 0.6111
+  },
+  {
+   "model": "gemma2:2b",
+   "defended": false,
+   "attack_success": 0.0,
+   "answer_accuracy": 0.7778
+  },
+  {
+   "model": "gemma2:2b",
+   "defended": true,
+   "attack_success": 0.0,
+   "answer_accuracy": 0.75
+  }
+ ],
+ "detector": {
+  "attacks_flagged": 1.0,
+  "clean_chunks_flagged": 0.0,
+  "clean_chunks": 2691
+ },
+ "sampling": [
+  {
+   "temperature": 0.0,
+   "same_answer_all_three_runs": 1.0,
+   "answer_accuracy": 0.7
+  },
+  {
+   "temperature": 0.7,
+   "same_answer_all_three_runs": 1.0,
+   "answer_accuracy": 0.7
+  },
+  {
+   "temperature": 1.3,
+   "same_answer_all_three_runs": 0.85,
+   "answer_accuracy": 0.6667
+  }
+ ],
+ "agent": {
+  "questions": 30,
+  "single_shot_accuracy": 0.1,
+  "agent_accuracy": 0.2667,
+  "agent_found_gold_chunk": 0.2,
+  "mean_searches": 1.83
+ }
+}
